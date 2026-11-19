@@ -1,0 +1,51 @@
+# Approach C: concise declaration; `modelnativ compile --expanded` shows the explicit contract it compiles to.
+apiVersion: modelnativ.dev/v1alpha1
+kind: ConciseOperation
+metadata: { name: refund.request, version: 1, summary: "Request a refund, by structured reason (as the original API) or in free text" }
+spec:
+  input:
+    type: object
+    additionalProperties: false
+    required: [orderId]
+    anyOf: [{ required: [reason] }, { required: [message] }]
+    properties:
+      orderId: { type: string, minLength: 1, maxLength: 64 }
+      reason: { type: string, enum: [DAMAGED, NOT_DELIVERED, CHANGED_MIND, OTHER] }
+      message: { type: string, minLength: 1, maxLength: 2000 }
+  principal: { scopes: [refund:request] }
+  tenancy: { key: order.tenantId, code: not_found }
+  concurrency: { key: request.orderId, versionFact: order.version }
+  reads:
+    orders.get: { args: { id: request.orderId, tenant: principal.tenant }, provides: [order.id, order.tenantId, order.ownerId, order.ageDays, order.refundableCents, order.version], establishes: [order.*] }
+    carrier.get: { args: { orderId: request.orderId, tenant: principal.tenant }, provides: [carrier.damaged, carrier.delivered], establishes: [carrier.*] }
+  model: { role: "classify the customer's refund reason", sees: [request.message], budget: { timeoutMs: 8000, maxOutputTokens: 64, maxRetries: 1 } }
+  decision:
+    source: { mode: hybrid, field: request.reason }
+    evaluation: sequential
+    categories:
+      DAMAGED:
+        description: The item arrived broken or damaged.
+        requires:
+          - "order.ageDays <= 60": too_old
+          - "carrier.damaged == true": { code: carrier_says_intact, unestablished: { outcome: review, code: needs_damage_report } }
+      NOT_DELIVERED:
+        description: The item never arrived.
+        requires:
+          - "order.ageDays <= 45": too_old
+          - "carrier.delivered == false": { code: carrier_says_delivered, unestablished: { outcome: review, code: needs_tracking } }
+      CHANGED_MIND:
+        description: The customer no longer wants the item; nothing is wrong with it.
+        requires:
+          - "order.ageDays <= 30": too_old
+      OTHER: { description: Anything else, alwaysReview: true, code: other }
+  policy:
+    authorization:
+      - "order.ownerId == principal.subject": forbidden
+    preconditions:
+      - "order.refundableCents > 0": nothing_to_refund
+      - "order.refundableCents <= 50000": over_limit
+  effects:
+    refund.request.apply:
+      args:
+        orderId: order.id
+        amountCents: { from: order.refundableCents, type: integer }

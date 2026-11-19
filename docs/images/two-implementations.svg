@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="900" height="360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker></defs>
+  <rect width="900" height="360" rx="16" fill="#ffffff"/>
+  <!-- implementations -->
+  <rect x="30" y="56" width="230" height="80" rx="8" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
+  <text x="145" y="84" font-size="13" font-weight="600" fill="#24292f" text-anchor="middle">Conventional service</text>
+  <text x="145" y="103" font-size="10" fill="#57606a" text-anchor="middle">src/service.ts, 293 lines</text>
+  <text x="145" y="117" font-size="10" fill="#57606a" text-anchor="middle">written without Modelnativ</text>
+  <rect x="30" y="196" width="230" height="80" rx="8" fill="#e7f1fb" stroke="#4a8fd8" stroke-width="1.5"/>
+  <text x="145" y="224" font-size="13" font-weight="600" fill="#0a3069" text-anchor="middle">Modelnativ</text>
+  <text x="145" y="243" font-size="10" fill="#0a3069" text-anchor="middle">plan.change.yaml (67 lines)</text>
+  <text x="145" y="257" font-size="10" fill="#0a3069" text-anchor="middle">plus small adapters</text>
+  <!-- harness -->
+  <rect x="330" y="36" width="300" height="260" rx="8" fill="none" stroke="#57606a" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="346" y="58" font-size="12" font-weight="600" fill="#24292f">Same inputs, same database</text>
+  <rect x="360" y="76" width="240" height="72" rx="8" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
+  <text x="480" y="102" font-size="13" font-weight="600" fill="#24292f" text-anchor="middle">Shared tests</text>
+  <text x="480" y="120" font-size="10" fill="#57606a" text-anchor="middle">the original's 53 service and</text>
+  <text x="480" y="134" font-size="10" fill="#57606a" text-anchor="middle">HTTP tests, run on both</text>
+  <rect x="360" y="196" width="240" height="72" rx="8" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
+  <text x="480" y="222" font-size="13" font-weight="600" fill="#24292f" text-anchor="middle">Differential</text>
+  <text x="480" y="240" font-size="10" fill="#57606a" text-anchor="middle">2,500 generated cases,</text>
+  <text x="480" y="254" font-size="10" fill="#57606a" text-anchor="middle">run through both</text>
+  <line x1="260" y1="96" x2="328" y2="96" stroke="#333" stroke-width="1.4" marker-end="url(#a)"/>
+  <line x1="260" y1="236" x2="328" y2="236" stroke="#333" stroke-width="1.4" marker-end="url(#a)"/>
+  <!-- compared -->
+  <rect x="690" y="120" width="186" height="96" rx="8" fill="#e9f6ec" stroke="#3a9a4f" stroke-width="1.5"/>
+  <text x="783" y="146" font-size="13" font-weight="600" fill="#1a4d25" text-anchor="middle">Compared</text>
+  <text x="783" y="165" font-size="10" fill="#1a4d25" text-anchor="middle">outcome and reason, amount,</text>
+  <text x="783" y="179" font-size="10" fill="#1a4d25" text-anchor="middle">rows written to the database,</text>
+  <text x="783" y="193" font-size="10" fill="#1a4d25" text-anchor="middle">messages sent</text>
+  <line x1="630" y1="168" x2="688" y2="168" stroke="#333" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="450" y="332" font-size="11" fill="#57606a" text-anchor="middle">Identical on every sampled case. One test differs on purpose (failed billing messages are retried, not dropped).</text>
+</svg>

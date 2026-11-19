@@ -1,0 +1,14 @@
+{
+  "name": "@modelnativ/example-subscription-original",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "better-sqlite3": "^11.5.0",
+    "express": "^4.21.0"
+  }
+}

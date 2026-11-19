@@ -1,0 +1,13 @@
+{
+  "name": "@modelnativ/example-refund-traditional",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./testing": "./src/testing/simulated-provider.ts" },
+  "dependencies": {
+    "@modelnativ/example-refund-migrated": "workspace:*",
+    "ajv": "^8.17.1",
+    "better-sqlite3": "^11.5.0",
+    "express": "^4.21.0"
+  }
+}

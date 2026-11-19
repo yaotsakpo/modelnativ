@@ -1,0 +1,67 @@
+// ADAPTER SCAFFOLD generated from service.ts. Reads become tools (facts minted on their own channel);
+// writes become one effect adapter that runs inside the commit transaction. Complete every TODO.
+import type Database from "better-sqlite3";
+import type { EffectAdapter } from "@modelnativ/effect-executor";
+import type { ReadTool } from "@modelnativ/runtime";
+
+export function tools(db: Database.Database): ReadTool[] {
+  return [
+    {
+      name: "loyalty_accounts.acct", // from service.ts:17
+      async read(args) {
+        const row = db.prepare("SELECT points, tier, status FROM loyalty_accounts WHERE member_id = ? AND tenant_id = ?").get(args.arg0, args.arg1) as Record<string, unknown> | undefined;
+        if (!row) return null;
+        return {
+          "acct.points": row["points"],
+          "acct.tier": row["tier"],
+          "acct.status": row["status"],
+          "acct.tenantId": args.arg1, // TODO: the tenant this row was read under
+        };
+      },
+    },
+    {
+      name: "rewards.reward", // from service.ts:22
+      async read(args) {
+        const row = db.prepare("SELECT cost, stock, min_tier FROM rewards WHERE id = ? AND tenant_id = ?").get(args.arg0, args.arg1) as Record<string, unknown> | undefined;
+        if (!row) return null;
+        return {
+          "reward.cost": row["cost"],
+          "reward.stock": row["stock"],
+          "reward.minTier": row["min_tier"],
+          "reward.tenantId": args.arg1, // TODO: the tenant this row was read under
+        };
+      },
+    },
+    {
+      name: "redemptions.today", // from service.ts:30
+      async read(args) {
+        const row = db.prepare("SELECT COUNT(*) AS n FROM redemptions WHERE member_id = ? AND created_at > ?").get(args.arg0, args.arg1) as Record<string, unknown> | undefined;
+        if (!row) return null;
+        return {
+          "today.n": row["n"],
+        };
+      },
+    },
+  ];
+}
+
+export const effect: EffectAdapter = {
+  tool: "loyalty.redeem.apply",
+  apply(db, args, binding, { effectId, now }) {
+    // TODO: re-check, inside the transaction, every fact the decision relied on (current state).
+    // service.ts:32
+    // TODO: guard this write (version check or a conditional WHERE) and check changes === 1
+    db.prepare("UPDATE loyalty_accounts SET points = points - ? WHERE member_id = ?").run(/* TODO: total, member.id */);
+    // service.ts:33
+    // TODO: guard this write (version check or a conditional WHERE) and check changes === 1
+    db.prepare("UPDATE rewards SET stock = stock - ? WHERE id = ?").run(/* TODO: req.quantity, req.rewardId */);
+    // service.ts:35
+    // TODO: guard this write (version check or a conditional WHERE) and check changes === 1
+    db.prepare("INSERT INTO redemptions (id, member_id, reward_id, quantity, points, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(/* TODO: id, member.id, req.rewardId, req.quantity, total, this.now() */);
+    return {
+      result: { /* TODO: the fields the original returned on success */ },
+      // service.ts:39 fetch(this.fulfillmentUrl, { method: "POST", body: JSON.stri
+      outbox: [{ destination: "TODO", payload: { /* TODO */ } }], // external call -> outbox (sent after commit, at-least-once)
+    };
+  },
+};

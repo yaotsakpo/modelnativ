@@ -1,0 +1,5 @@
+Modelnativ
+Copyright 2026 Yao Tsakpo
+
+Includes the PSAP resolver (packages/gate/src/psap-authority.ts), vendored
+unmodified under Apache-2.0; see packages/gate/PSAP-NOTICE.

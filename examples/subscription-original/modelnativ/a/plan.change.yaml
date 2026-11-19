@@ -1,0 +1,125 @@
+# Approach A (explicit). Migrated from SubscriptionService.changePlan (src/service.ts:132-276).
+apiVersion: modelnativ.dev/v1alpha1
+kind: Operation
+metadata:
+  name: plan.change
+  version: 1
+  summary: Change a subscription's plan (upgrade, downgrade, or request approval)
+spec:
+  input:
+    type: object
+    additionalProperties: false
+    required: [subscriptionId, targetPlanId]
+    properties:
+      subscriptionId: { type: string, minLength: 1 }
+      targetPlanId: { type: string, minLength: 1 }
+      expectedVersion: { type: integer, minimum: 1 }
+  principal:
+    required: true
+    scopes: [subscription:change-plan]
+  tenancy:
+    key: sub.tenantId
+    code: not_found                                                    # service.ts:145
+  concurrency:
+    mode: serialized_per_resource
+    key: request.subscriptionId
+    versionFact: sub.version
+    maxQueue: 1000
+  facts:
+    - tool: request
+      provides: [request.subscriptionId, request.targetPlanId, request.expectedVersion]
+    - tool: subscriptions.get
+      args: { id: request.subscriptionId, tenant: principal.tenant }
+      provides: [sub.id, sub.accountId, sub.tenantId, sub.planId, sub.status, sub.seatsInUse, sub.version, sub.promoLockActive, sub.periodStart]
+    - tool: members.get
+      args: { account: sub.accountId, user: principal.subject }
+      provides: [member.userId, member.canChangePlan]
+    - tool: plans.target
+      args: { id: request.targetPlanId }
+      provides: [target.id, target.purchasable, target.seatLimit]
+    - tool: policy.get
+      provides: [policy.approvalThresholdCents, policy.maxPlanChangesPerPeriod]                 # service.ts:61-71 (injectable config)
+    - tool: invoices.pending
+      args: { sub: sub.id }
+      provides: [billing.pendingInvoices]
+    - tool: history.period
+      args: { sub: sub.id, since: sub.periodStart }
+      provides: [history.changesThisPeriod]
+    - tool: change.compute
+      args: { sub: sub.id, to: request.targetPlanId, threshold: policy.approvalThresholdCents }
+      provides: [change.direction, change.prorationCents, change.kind]
+  authority:
+    - { id: cap.request, channel: principal, predicates: ["request.*"] }
+    - { id: cap.subscriptions, channel: "tool:subscriptions.get", predicates: ["sub.*"] }
+    - { id: cap.members, channel: "tool:members.get", predicates: ["member.*"] }
+    - { id: cap.plans, channel: "tool:plans.target", predicates: ["target.*"] }
+    - { id: cap.policy, channel: "tool:policy.get", predicates: ["policy.*"] }
+    - { id: cap.invoices, channel: "tool:invoices.pending", predicates: ["billing.*"] }
+    - { id: cap.history, channel: "tool:history.period", predicates: ["history.*"] }
+    - { id: cap.change, channel: "tool:change.compute", predicates: ["change.*"] }
+  decision:
+    # change.kind = upgrade | upgrade_approval | downgrade, computed by change.compute
+    # (the direction rule lives in that tool, next to the proration function; the approval
+    # threshold is policy.approvalThresholdCents, re-checked below).
+    source:
+      mode: fact
+      field: change.kind
+      values: { upgrade: UPGRADE, upgrade_approval: NEEDS_APPROVAL, downgrade: DOWNGRADE }
+    evaluation: sequential
+    categories:
+      UPGRADE:
+        description: Apply an upgrade
+        effect: plan.change.apply
+        requires:
+          - { rule: "change.direction == 'upgrade'" }
+          - { rule: "change.prorationCents <= policy.approvalThresholdCents" }                       # service.ts:194
+      NEEDS_APPROVAL:
+        description: "An upgrade above the approval threshold: record an approval request"
+        effect: plan.change.requestApproval
+        requires:
+          - { rule: "change.direction == 'upgrade'" }
+          - { rule: "change.prorationCents > policy.approvalThresholdCents" }                        # service.ts:194
+      DOWNGRADE:
+        description: Apply a downgrade
+        effect: plan.change.apply
+        requires:
+          - { rule: "sub.promoLockActive == false", code: promo_lock_active }          # service.ts:179
+          - { rule: "sub.seatsInUse <= target.seatLimit", code: seat_limit_exceeded }  # service.ts:182
+  policy:
+    authorization:
+      - { rule: "member.canChangePlan == true", code: forbidden, unestablished: { outcome: refuse, code: forbidden } }   # service.ts:151
+    preconditions:
+      - { rule: "sub.status != 'past_due'", code: subscription_past_due }                                              # service.ts:154
+      - { rule: "sub.status != 'cancelled'", code: subscription_cancelled }                                            # service.ts:155
+      - { rule: "target.id == request.targetPlanId", unestablished: { outcome: refuse, code: plan_not_found } }       # service.ts:161
+      - { rule: "target.purchasable == true", code: plan_not_purchasable }                                            # service.ts:162
+      - { rule: "target.id != sub.planId", code: same_plan }                                                          # service.ts:163
+      - { rule: "billing.pendingInvoices == 0", code: invoice_pending }                                               # service.ts:169
+      - { rule: "history.changesThisPeriod < policy.maxPlanChangesPerPeriod", code: plan_change_limit_reached }                                    # service.ts:174
+    invariants:
+      - { rule: "proposal.expectedVersion <= sub.version", code: version_conflict }
+  effects:
+    plan.change.apply:
+      mode: effectful
+      idempotency: required
+      args:
+        subscriptionId: { type: string, authority: established, from: [sub.id] }
+        accountId: { type: string, authority: established, from: [sub.accountId] }
+        fromPlanId: { type: string, authority: established, from: [sub.planId] }
+        toPlanId: { type: string, authority: established, from: [target.id] }
+        direction: { type: string, authority: established, from: [change.direction] }
+        prorationCents: { type: integer, authority: established, from: [change.prorationCents] }
+        changedBy: { type: string, authority: established, from: [member.userId] }
+        expectedVersion: { type: integer, authority: bounded, default: sub.version, fromRequest: request.expectedVersion }
+    plan.change.requestApproval:
+      mode: effectful
+      idempotency: required
+      args:
+        subscriptionId: { type: string, authority: established, from: [sub.id] }
+        fromPlanId: { type: string, authority: established, from: [sub.planId] }
+        toPlanId: { type: string, authority: established, from: [target.id] }
+        prorationCents: { type: integer, authority: established, from: [change.prorationCents] }
+        requestedBy: { type: string, authority: established, from: [member.userId] }
+  failure:
+    onUnverifiable: refuse
+    onModelError: refuse

@@ -1,0 +1,477 @@
+{
+  "target": "RedemptionService.redeem",
+  "generatedFrom": {
+    "file": "service.ts",
+    "line": 15,
+    "endLine": 41
+  },
+  "functions": [
+    "RedemptionService.redeem"
+  ],
+  "items": [
+    {
+      "id": "m001",
+      "source": {
+        "file": "service.ts",
+        "line": 17,
+        "endLine": 17,
+        "op": "SELECT",
+        "tables": [
+          "loyalty_accounts"
+        ],
+        "text": "SELECT points, tier, status FROM loyalty_accounts WHERE member_id = ? AND tenant_id = ?",
+        "columns": [
+          "points",
+          "tier",
+          "status"
+        ],
+        "assignedTo": "acct",
+        "boundArgs": [
+          "member.id",
+          "member.tenantId"
+        ],
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "read",
+      "text": "SELECT points, tier, status FROM loyalty_accounts WHERE member_id = ? AND tenant_id = ?",
+      "why": "Reads loyalty_accounts: a fact source. It becomes a read tool whose results are minted on its own channel.",
+      "confidence": "high",
+      "review": "required"
+    },
+    {
+      "id": "m002",
+      "source": {
+        "file": "service.ts",
+        "line": 22,
+        "endLine": 22,
+        "op": "SELECT",
+        "tables": [
+          "rewards"
+        ],
+        "text": "SELECT cost, stock, min_tier FROM rewards WHERE id = ? AND tenant_id = ?",
+        "columns": [
+          "cost",
+          "stock",
+          "min_tier"
+        ],
+        "assignedTo": "reward",
+        "boundArgs": [
+          "req.rewardId",
+          "member.tenantId"
+        ],
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "read",
+      "text": "SELECT cost, stock, min_tier FROM rewards WHERE id = ? AND tenant_id = ?",
+      "why": "Reads rewards: a fact source. It becomes a read tool whose results are minted on its own channel.",
+      "confidence": "high",
+      "review": "required"
+    },
+    {
+      "id": "m003",
+      "source": {
+        "file": "service.ts",
+        "line": 30,
+        "endLine": 30,
+        "op": "SELECT",
+        "tables": [
+          "redemptions"
+        ],
+        "text": "SELECT COUNT(*) AS n FROM redemptions WHERE member_id = ? AND created_at > ?",
+        "columns": [
+          "n"
+        ],
+        "assignedTo": "today",
+        "boundArgs": [
+          "member.id",
+          "this.now() - 86_400_000"
+        ],
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "read",
+      "text": "SELECT COUNT(*) AS n FROM redemptions WHERE member_id = ? AND created_at > ?",
+      "why": "Reads redemptions: a fact source. It becomes a read tool whose results are minted on its own channel.",
+      "confidence": "high",
+      "review": "required",
+      "warnings": [
+        "No tenant filter found in this read. Tenancy must be established (e.g. via the owning record) before migration."
+      ]
+    },
+    {
+      "id": "m004",
+      "source": {
+        "file": "service.ts",
+        "line": 32,
+        "endLine": 32,
+        "op": "UPDATE",
+        "tables": [
+          "loyalty_accounts"
+        ],
+        "text": "UPDATE loyalty_accounts SET points = points - ? WHERE member_id = ?",
+        "columns": null,
+        "boundArgs": [
+          "total",
+          "member.id"
+        ],
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "effect",
+      "text": "UPDATE loyalty_accounts SET points = points - ? WHERE member_id = ?",
+      "why": "UPDATE on loyalty_accounts: a state transition. It stays deterministic in an effect adapter (version check, idempotency, one transaction).",
+      "confidence": "high",
+      "review": "required",
+      "warnings": [
+        "No optimistic version check in this write. Add one in the adapter (concurrent requests could lose updates)."
+      ]
+    },
+    {
+      "id": "m005",
+      "source": {
+        "file": "service.ts",
+        "line": 33,
+        "endLine": 33,
+        "op": "UPDATE",
+        "tables": [
+          "rewards"
+        ],
+        "text": "UPDATE rewards SET stock = stock - ? WHERE id = ?",
+        "columns": null,
+        "boundArgs": [
+          "req.quantity",
+          "req.rewardId"
+        ],
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "effect",
+      "text": "UPDATE rewards SET stock = stock - ? WHERE id = ?",
+      "why": "UPDATE on rewards: a state transition. It stays deterministic in an effect adapter (version check, idempotency, one transaction).",
+      "confidence": "high",
+      "review": "required",
+      "warnings": [
+        "No optimistic version check in this write. Add one in the adapter (concurrent requests could lose updates)."
+      ]
+    },
+    {
+      "id": "m006",
+      "source": {
+        "file": "service.ts",
+        "line": 35,
+        "endLine": 35,
+        "op": "INSERT",
+        "tables": [
+          "redemptions"
+        ],
+        "text": "INSERT INTO redemptions (id, member_id, reward_id, quantity, points, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "columns": null,
+        "boundArgs": [
+          "id",
+          "member.id",
+          "req.rewardId",
+          "req.quantity",
+          "total",
+          "this.now()"
+        ],
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "effect",
+      "text": "INSERT INTO redemptions (id, member_id, reward_id, quantity, points, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "why": "INSERT on redemptions: a state transition. It stays deterministic in an effect adapter (version check, idempotency, one transaction).",
+      "confidence": "high",
+      "review": "required"
+    },
+    {
+      "id": "m007",
+      "source": {
+        "file": "service.ts",
+        "line": 39,
+        "endLine": 39,
+        "kind": "http",
+        "detail": "fetch(this.fulfillmentUrl, { method: \"POST\", body: JSON.stringify({ redemptionId: result.redemptionId }) })",
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "effect",
+      "text": "fetch(this.fulfillmentUrl, { method: \"POST\", body: JSON.stringify({ redemptionId: result.redemptionId }) })",
+      "why": "Outbound call: an external effect. It must go through the outbox with an idempotency key (at-least-once, receiver de-duplicates).",
+      "confidence": "high",
+      "review": "required",
+      "warnings": [
+        "Called next to a transaction: check it is not sent before the commit, and that it is retried if it fails after."
+      ]
+    },
+    {
+      "id": "m008",
+      "source": {
+        "file": "service.ts",
+        "line": 20,
+        "endLine": 20,
+        "kind": "if",
+        "condition": "!acct",
+        "outcome": "{ status: \"rejected\", reason: \"not_found\" }",
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "existence",
+      "text": "if (!acct) { status: \"rejected\", reason: \"not_found\" }",
+      "why": "A missing record or fact. In the contract this becomes an unestablished fact (UNVERIFIABLE_PRECONDITION or REVIEW), not a model decision.",
+      "confidence": "high",
+      "review": "required"
+    },
+    {
+      "id": "m009",
+      "source": {
+        "file": "service.ts",
+        "line": 21,
+        "endLine": 21,
+        "kind": "if",
+        "condition": "acct.status !== \"active\"",
+        "outcome": "{ status: \"rejected\", reason: \"inactive\" }",
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "invariant",
+      "text": "if (acct.status !== \"active\") { status: \"rejected\", reason: \"inactive\" }",
+      "why": "An equality check on state; deterministic.",
+      "confidence": "medium",
+      "review": "required",
+      "candidateRule": "acct.status == 'active'"
+    },
+    {
+      "id": "m010",
+      "source": {
+        "file": "service.ts",
+        "line": 25,
+        "endLine": 25,
+        "kind": "if",
+        "condition": "!reward",
+        "outcome": "{ status: \"rejected\", reason: \"not_found\" }",
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "existence",
+      "text": "if (!reward) { status: \"rejected\", reason: \"not_found\" }",
+      "why": "A missing record or fact. In the contract this becomes an unestablished fact (UNVERIFIABLE_PRECONDITION or REVIEW), not a model decision.",
+      "confidence": "high",
+      "review": "required"
+    },
+    {
+      "id": "m011",
+      "source": {
+        "file": "service.ts",
+        "line": 26,
+        "endLine": 26,
+        "kind": "if",
+        "condition": "TIER_RANK[acct.tier]! < TIER_RANK[reward.min_tier]!",
+        "outcome": "{ status: \"rejected\", reason: \"tier_required\" }",
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "invariant",
+      "text": "if (TIER_RANK[acct.tier]! < TIER_RANK[reward.min_tier]!) { status: \"rejected\", reason: \"tier_required\" }",
+      "why": "A threshold over stored or derived state (amounts, dates, counts, ranks). Arithmetic and limits stay deterministic.",
+      "confidence": "medium",
+      "review": "required",
+      "warnings": [
+        "The condition is not a single comparison of paths/literals; it must be rewritten by hand (or kept in an adapter)."
+      ]
+    },
+    {
+      "id": "m012",
+      "source": {
+        "file": "service.ts",
+        "line": 27,
+        "endLine": 27,
+        "kind": "if",
+        "condition": "reward.stock < req.quantity",
+        "outcome": "{ status: \"rejected\", reason: \"out_of_stock\" }",
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "invariant",
+      "text": "if (reward.stock < req.quantity) { status: \"rejected\", reason: \"out_of_stock\" }",
+      "why": "A threshold over stored or derived state (amounts, dates, counts, ranks). Arithmetic and limits stay deterministic.",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "reward.stock >= req.quantity"
+    },
+    {
+      "id": "m013",
+      "source": {
+        "file": "service.ts",
+        "line": 29,
+        "endLine": 29,
+        "kind": "if",
+        "condition": "acct.points < total",
+        "outcome": "{ status: \"rejected\", reason: \"insufficient_points\" }",
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "invariant",
+      "text": "if (acct.points < total) { status: \"rejected\", reason: \"insufficient_points\" }",
+      "why": "A threshold over stored or derived state (amounts, dates, counts, ranks). Arithmetic and limits stay deterministic.",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "acct.points >= total"
+    },
+    {
+      "id": "m014",
+      "source": {
+        "file": "service.ts",
+        "line": 31,
+        "endLine": 31,
+        "kind": "if",
+        "condition": "today >= DAILY_LIMIT",
+        "outcome": "{ status: \"rejected\", reason: \"daily_limit\" }",
+        "function": "RedemptionService.redeem"
+      },
+      "kind": "invariant",
+      "text": "if (today >= DAILY_LIMIT) { status: \"rejected\", reason: \"daily_limit\" }",
+      "why": "A threshold over stored or derived state (amounts, dates, counts, ranks). Arithmetic and limits stay deterministic.",
+      "confidence": "medium",
+      "review": "required",
+      "warnings": [
+        "The condition is not a single comparison of paths/literals; it must be rewritten by hand (or kept in an adapter)."
+      ]
+    }
+  ],
+  "summary": {
+    "authorization": 0,
+    "invariant": 5,
+    "existence": 2,
+    "read": 3,
+    "effect": 4,
+    "judgment": 0,
+    "unknown": 0
+  },
+  "unsupported": [],
+  "notes": [
+    "No model-suitable judgment found: every decision here is deterministic. Migrating gains framework guarantees (idempotency, outbox, audit, replay) but no model role; consider keeping it conventional."
+  ],
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "rewardId",
+      "quantity"
+    ],
+    "properties": {
+      "rewardId": {
+        "type": "string"
+      },
+      "quantity": {
+        "type": "number"
+      },
+      "note": {
+        "type": "string"
+      }
+    }
+  },
+  "principalParam": "member",
+  "requestParam": "req",
+  "outcomes": [
+    {
+      "status": "rejected",
+      "reason": "not_found",
+      "mapsTo": "REFUSE",
+      "line": 20
+    },
+    {
+      "status": "rejected",
+      "reason": "inactive",
+      "mapsTo": "REFUSE",
+      "line": 21
+    },
+    {
+      "status": "rejected",
+      "reason": "not_found",
+      "mapsTo": "REFUSE",
+      "line": 25
+    },
+    {
+      "status": "rejected",
+      "reason": "tier_required",
+      "mapsTo": "REFUSE",
+      "line": 26
+    },
+    {
+      "status": "rejected",
+      "reason": "out_of_stock",
+      "mapsTo": "REFUSE",
+      "line": 27
+    },
+    {
+      "status": "rejected",
+      "reason": "insufficient_points",
+      "mapsTo": "REFUSE",
+      "line": 29
+    },
+    {
+      "status": "rejected",
+      "reason": "daily_limit",
+      "mapsTo": "REFUSE",
+      "line": 31
+    },
+    {
+      "status": "redeemed",
+      "mapsTo": "ALLOW",
+      "line": 36
+    }
+  ],
+  "precedence": [
+    {
+      "order": 1,
+      "line": 20,
+      "code": "not_found",
+      "kind": "existence"
+    },
+    {
+      "order": 2,
+      "line": 21,
+      "code": "inactive",
+      "rule": "acct.status == 'active'",
+      "kind": "invariant"
+    },
+    {
+      "order": 3,
+      "line": 25,
+      "code": "not_found",
+      "kind": "existence"
+    },
+    {
+      "order": 4,
+      "line": 26,
+      "code": "tier_required",
+      "kind": "invariant"
+    },
+    {
+      "order": 5,
+      "line": 27,
+      "code": "out_of_stock",
+      "rule": "reward.stock >= request.quantity",
+      "kind": "invariant"
+    },
+    {
+      "order": 6,
+      "line": 29,
+      "code": "insufficient_points",
+      "kind": "invariant"
+    },
+    {
+      "order": 7,
+      "line": 31,
+      "code": "daily_limit",
+      "kind": "invariant"
+    }
+  ],
+  "assumptions": {
+    "idempotency": "NONE in the original: a retried request repeats the effect. Modelnativ requires an Idempotency-Key, so callers must send one.",
+    "concurrency": "NO version check in the original writes: concurrent requests rely on the transaction alone. The adapter must guard each write.",
+    "transaction": "the original wraps reads + writes in one transaction"
+  },
+  "manualItems": [
+    "Confirm \"member\" is the authenticated caller (mapped to principal.subject / principal.tenant).",
+    "Input schema: number: integer or not? (money and counts are usually integers)",
+    "service.ts:30 read argument `this.now() - 86_400_000` is computed; compute it inside the read tool.",
+    "service.ts:26 rule could not be translated: if (TIER_RANK[acct.tier]! < TIER_RANK[reward.min_tier]!) { status: \"rejected\", r",
+    "service.ts:29 rule could not be translated: if (acct.points < total) { status: \"rejected\", reason: \"insufficient_points\" }",
+    "service.ts:31 rule could not be translated: if (today >= DAILY_LIMIT) { status: \"rejected\", reason: \"daily_limit\" }",
+    "Effects: name the effect arguments and their sources; the adapter scaffold lists the original writes.",
+    "Invariants: bound every caller-supplied amount (the generator never invents limits).",
+    "Authority grants are proposed from which tool reads which table: confirm each table is authoritative for those facts.",
+    "RedemptionService.redeem is synchronous (returns RedeemResult); Modelnativ execution is async, so every caller must `await` the replacement.",
+    "The original makes an outbound call outside its transaction (fire-and-forget). The migration sends it via the outbox: delivery becomes at-least-once AFTER commit. This is an intended behaviour change; confirm it."
+  ]
+}

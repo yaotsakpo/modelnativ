@@ -1,0 +1,59 @@
+{
+ "kind": "modelnativ.observed-effects",
+ "source": "tests/differential/refund.lib.ts cases() (870)",
+ "executions": 870,
+ "reads": {
+  "orders.get": [
+   {
+    "sql": "SELECT * FROM orders WHERE id = ? AND tenant_id = ?",
+    "op": "SELECT",
+    "tables": [
+     "orders"
+    ],
+    "count": 870,
+    "rowsChanged": 0
+   }
+  ],
+  "carrier.get": [
+   {
+    "sql": "SELECT c.damaged, c.delivered FROM carrier_reports c JOIN orders o ON o.id = c.order_id WHERE c.order_id = ? AND o.tenant_id = ?",
+    "op": "SELECT",
+    "tables": [
+     "carrier_reports",
+     "orders"
+    ],
+    "count": 870,
+    "rowsChanged": 0
+   }
+  ]
+ },
+ "effects": {
+  "refund.request.apply": {
+   "applied": 24,
+   "refused": {},
+   "statements": [
+    {
+     "sql": "UPDATE orders SET refundable_cents = refundable_cents - ?, version = version + 1 WHERE id = ? AND tenant_id = ? AND version = ? AND refundable_cents >= ?",
+     "op": "UPDATE",
+     "tables": [
+      "orders"
+     ],
+     "count": 24,
+     "rowsChanged": 24
+    },
+    {
+     "sql": "INSERT INTO refunds (id, tenant_id, order_id, amount_cents, created_at) VALUES (?, ?, ?, ?, ?)",
+     "op": "INSERT",
+     "tables": [
+      "refunds"
+     ],
+     "count": 24,
+     "rowsChanged": 24
+    }
+   ],
+   "outbox": {}
+  }
+ },
+ "operation": "refund.request",
+ "fingerprint": "518bcdd3d3c06dbae62f0c78a5a15537ad7aad8fc2a36556233e1aa2eadc39ca"
+}

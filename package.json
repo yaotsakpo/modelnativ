@@ -1,0 +1,52 @@
+{
+  "name": "modelnativ",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "mn": "tsx packages/cli/src/main.ts",
+    "demo:subscription": "tsx packages/cli/src/main.ts serve examples/subscription-original/modelnativ/c --dev --port 8080",
+    "demo:subscription:embedded": "tsx examples/subscription-original/demo-embedded.ts",
+    "test:slow": "MN_TEST=slow vitest run",
+    "test:all": "MN_TEST=all vitest run"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "fast-check": "^3.23.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "@modelnativ/cli": "workspace:*",
+    "@modelnativ/contract-compiler": "workspace:*",
+    "@modelnativ/contract-schema": "workspace:*",
+    "@modelnativ/effect-executor": "workspace:*",
+    "@modelnativ/example-refund-migrated": "workspace:*",
+    "@modelnativ/gate": "workspace:*",
+    "@modelnativ/model-adapter": "workspace:*",
+    "@modelnativ/observability": "workspace:*",
+    "@modelnativ/runtime": "workspace:*",
+    "@modelnativ/verifier": "workspace:*",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "better-sqlite3": "^11.5.0",
+    "express": "^4.21.0",
+    "yaml": "^2.6.0",
+    "@modelnativ/example-refund-original": "workspace:*",
+    "@modelnativ/core": "workspace:*",
+    "@modelnativ/example-refund-traditional": "workspace:*",
+    "@modelnativ/reliability": "workspace:*",
+    "@modelnativ/analyzer-typescript": "workspace:*",
+    "@modelnativ/example-loyalty-original": "workspace:*",
+    "@modelnativ/example-subscription-original": "workspace:*"
+  }
+}

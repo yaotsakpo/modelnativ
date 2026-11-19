@@ -1,0 +1,140 @@
+{
+ "kind": "modelnativ.observed-effects",
+ "source": "tests/differential/subscription.lib.ts cases(2500)",
+ "executions": 2500,
+ "reads": {
+  "subscriptions.get": [
+   {
+    "sql": "SELECT s.id, s.account_id, a.tenant_id, s.plan_id, s.status, s.seats_in_use, s.current_period_start, s.promo_lock_until, s.version FROM subscriptions s JOIN accounts a ON a.id = s.account_id WHERE s.id = ? AND a.tenant_id = ?",
+    "op": "SELECT",
+    "tables": [
+     "subscriptions",
+     "accounts"
+    ],
+    "count": 2500,
+    "rowsChanged": 0
+   }
+  ],
+  "members.get": [
+   {
+    "sql": "SELECT user_id, role FROM account_members WHERE account_id = ? AND user_id = ?",
+    "op": "SELECT",
+    "tables": [
+     "account_members"
+    ],
+    "count": 2227,
+    "rowsChanged": 0
+   }
+  ],
+  "plans.target": [
+   {
+    "sql": "SELECT id, purchasable, seat_limit FROM plans WHERE id = ?",
+    "op": "SELECT",
+    "tables": [
+     "plans"
+    ],
+    "count": 2500,
+    "rowsChanged": 0
+   }
+  ],
+  "invoices.pending": [
+   {
+    "sql": "SELECT COUNT(*) AS n FROM invoices WHERE subscription_id = ? AND status = 'pending'",
+    "op": "SELECT",
+    "tables": [
+     "invoices"
+    ],
+    "count": 2227,
+    "rowsChanged": 0
+   }
+  ],
+  "history.period": [
+   {
+    "sql": "SELECT COUNT(*) AS n FROM plan_change_history WHERE subscription_id = ? AND changed_at >= ?",
+    "op": "SELECT",
+    "tables": [
+     "plan_change_history"
+    ],
+    "count": 2227,
+    "rowsChanged": 0
+   }
+  ],
+  "change.compute": [
+   {
+    "sql": "SELECT cur.monthly_price_cents AS cur_price, cur.feature_tier AS cur_tier, tgt.monthly_price_cents AS tgt_price, tgt.feature_tier AS tgt_tier, s.current_period_start AS period_start, s.current_period_end AS period_end FROM subscriptions s JOIN plans cur ON cur.id = s.plan_id JOIN plans tgt ON tgt.id = ? WHERE s.id = ?",
+    "op": "SELECT",
+    "tables": [
+     "subscriptions",
+     "plans"
+    ],
+    "count": 2227,
+    "rowsChanged": 0
+   }
+  ]
+ },
+ "effects": {
+  "plan.change.apply": {
+   "applied": 72,
+   "refused": {},
+   "statements": [
+    {
+     "sql": "UPDATE subscriptions SET plan_id = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?",
+     "op": "UPDATE",
+     "tables": [
+      "subscriptions"
+     ],
+     "count": 72,
+     "rowsChanged": 72
+    },
+    {
+     "sql": "INSERT INTO credit_notes (id, subscription_id, amount_cents, reason, created_at) VALUES (?, ?, ?, ?, ?)",
+     "op": "INSERT",
+     "tables": [
+      "credit_notes"
+     ],
+     "count": 31,
+     "rowsChanged": 31
+    },
+    {
+     "sql": "INSERT INTO plan_change_history (id, subscription_id, from_plan_id, to_plan_id, direction, proration_cents, changed_by, changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+     "op": "INSERT",
+     "tables": [
+      "plan_change_history"
+     ],
+     "count": 72,
+     "rowsChanged": 72
+    },
+    {
+     "sql": "INSERT INTO invoice_items (id, subscription_id, invoice_id, amount_cents, description, created_at) VALUES (?, ?, NULL, ?, ?, ?)",
+     "op": "INSERT",
+     "tables": [
+      "invoice_items"
+     ],
+     "count": 41,
+     "rowsChanged": 41
+    }
+   ],
+   "outbox": {
+    "billing": 72
+   }
+  },
+  "plan.change.requestApproval": {
+   "applied": 194,
+   "refused": {},
+   "statements": [
+    {
+     "sql": "INSERT INTO plan_change_requests (id, subscription_id, from_plan_id, to_plan_id, proration_cents, requested_by, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)",
+     "op": "INSERT",
+     "tables": [
+      "plan_change_requests"
+     ],
+     "count": 194,
+     "rowsChanged": 194
+    }
+   ],
+   "outbox": {}
+  }
+ },
+ "operation": "plan.change",
+ "fingerprint": "8e1e957142e669852b4d281cf100e25cf972e9e907a49aa18c87c32d5938f1f8"
+}

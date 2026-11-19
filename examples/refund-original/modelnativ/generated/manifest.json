@@ -1,0 +1,598 @@
+{
+  "target": "createLegacyRefundService.requestRefund",
+  "generatedFrom": {
+    "file": "app.ts",
+    "line": 24,
+    "endLine": 37
+  },
+  "functions": [
+    "createLegacyRefundService.requestRefund",
+    "loadOrder",
+    "decideRefund"
+  ],
+  "items": [
+    {
+      "id": "m001",
+      "source": {
+        "file": "app.ts",
+        "line": 27,
+        "endLine": 27,
+        "op": "SELECT",
+        "tables": [
+          "carrier_reports"
+        ],
+        "text": "SELECT damaged, delivered FROM carrier_reports WHERE order_id=?",
+        "columns": [
+          "damaged",
+          "delivered"
+        ],
+        "assignedTo": "c",
+        "boundArgs": [
+          "orderId"
+        ],
+        "function": "createLegacyRefundService.requestRefund"
+      },
+      "kind": "read",
+      "text": "SELECT damaged, delivered FROM carrier_reports WHERE order_id=?",
+      "why": "Reads carrier_reports: a fact source. It becomes a read tool whose results are minted on its own channel.",
+      "confidence": "high",
+      "review": "required",
+      "warnings": [
+        "No tenant filter found in this read. Tenancy must be established (e.g. via the owning record) before migration."
+      ]
+    },
+    {
+      "id": "m002",
+      "source": {
+        "file": "app.ts",
+        "line": 32,
+        "endLine": 32,
+        "op": "UPDATE",
+        "tables": [
+          "orders"
+        ],
+        "text": "UPDATE orders SET refundable_cents = refundable_cents - ?, version = version + 1 WHERE id=?",
+        "columns": null,
+        "boundArgs": [
+          "d.amountCents",
+          "orderId"
+        ],
+        "function": "createLegacyRefundService.requestRefund"
+      },
+      "kind": "effect",
+      "text": "UPDATE orders SET refundable_cents = refundable_cents - ?, version = version + 1 WHERE id=?",
+      "why": "UPDATE on orders: a state transition. It stays deterministic in an effect adapter (version check, idempotency, one transaction).",
+      "confidence": "high",
+      "review": "required"
+    },
+    {
+      "id": "m003",
+      "source": {
+        "file": "app.ts",
+        "line": 33,
+        "endLine": 33,
+        "op": "INSERT",
+        "tables": [
+          "refunds"
+        ],
+        "text": "INSERT INTO refunds(id, tenant_id, order_id, amount_cents, created_at) VALUES (?,?,?,?,?)",
+        "columns": null,
+        "boundArgs": [
+          "id",
+          "user.tenantId",
+          "orderId",
+          "d.amountCents",
+          "now()"
+        ],
+        "function": "createLegacyRefundService.requestRefund"
+      },
+      "kind": "effect",
+      "text": "INSERT INTO refunds(id, tenant_id, order_id, amount_cents, created_at) VALUES (?,?,?,?,?)",
+      "why": "INSERT on refunds: a state transition. It stays deterministic in an effect adapter (version check, idempotency, one transaction).",
+      "confidence": "high",
+      "review": "required"
+    },
+    {
+      "id": "m004",
+      "source": {
+        "file": "app.ts",
+        "line": 30,
+        "endLine": 30,
+        "kind": "if",
+        "condition": "d.outcome !== \"ALLOW\"",
+        "outcome": "d",
+        "function": "createLegacyRefundService.requestRefund"
+      },
+      "kind": "invariant",
+      "text": "if (d.outcome !== \"ALLOW\") d",
+      "why": "An equality check on state; deterministic.",
+      "confidence": "low",
+      "review": "required",
+      "candidateRule": "d.outcome == 'ALLOW'",
+      "warnings": [
+        "Refers to a computed local value, not a stored fact or input: map it to a derived fact or keep it in an adapter."
+      ]
+    },
+    {
+      "id": "m005",
+      "source": {
+        "file": "app.ts",
+        "line": 20,
+        "endLine": 20,
+        "op": "SELECT",
+        "tables": [
+          "orders"
+        ],
+        "text": "SELECT * FROM orders WHERE id=?",
+        "columns": null,
+        "assignedTo": "r",
+        "boundArgs": [
+          "id"
+        ],
+        "function": "loadOrder"
+      },
+      "kind": "read",
+      "text": "SELECT * FROM orders WHERE id=?",
+      "why": "Reads orders: a fact source. It becomes a read tool whose results are minted on its own channel.",
+      "confidence": "high",
+      "review": "required",
+      "warnings": [
+        "No tenant filter found in this read. Tenancy must be established (e.g. via the owning record) before migration."
+      ]
+    },
+    {
+      "id": "m006",
+      "source": {
+        "file": "policy.ts",
+        "line": 18,
+        "endLine": 18,
+        "kind": "if",
+        "condition": "!order || order.tenantId !== user.tenantId",
+        "outcome": "{ outcome: \"REFUSE\", reason: \"not_found\" }",
+        "function": "decideRefund"
+      },
+      "kind": "authorization",
+      "text": "if (!order || order.tenantId !== user.tenantId) { outcome: \"REFUSE\", reason: \"not_found\" }",
+      "why": "Compares an ownership or tenancy field: an authorization rule. It must stay deterministic (gate + in-transaction re-check).",
+      "confidence": "high",
+      "review": "required"
+    },
+    {
+      "id": "m007",
+      "source": {
+        "file": "policy.ts",
+        "line": 19,
+        "endLine": 19,
+        "kind": "if",
+        "condition": "order.ownerId !== user.id",
+        "outcome": "{ outcome: \"REFUSE\", reason: \"forbidden\" }",
+        "function": "decideRefund"
+      },
+      "kind": "authorization",
+      "text": "if (order.ownerId !== user.id) { outcome: \"REFUSE\", reason: \"forbidden\" }",
+      "why": "Compares an ownership or tenancy field: an authorization rule. It must stay deterministic (gate + in-transaction re-check).",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "order.ownerId == user.id"
+    },
+    {
+      "id": "m008",
+      "source": {
+        "file": "policy.ts",
+        "line": 20,
+        "endLine": 20,
+        "kind": "if",
+        "condition": "order.refundableCents <= 0",
+        "outcome": "{ outcome: \"REFUSE\", reason: \"nothing_to_refund\" }",
+        "function": "decideRefund"
+      },
+      "kind": "invariant",
+      "text": "if (order.refundableCents <= 0) { outcome: \"REFUSE\", reason: \"nothing_to_refund\" }",
+      "why": "A threshold over stored or derived state (amounts, dates, counts, ranks). Arithmetic and limits stay deterministic.",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "order.refundableCents > 0"
+    },
+    {
+      "id": "m009",
+      "source": {
+        "file": "policy.ts",
+        "line": 21,
+        "endLine": 21,
+        "kind": "if",
+        "condition": "order.refundableCents > MAX_REFUND_CENTS",
+        "outcome": "{ outcome: \"REFUSE\", reason: \"over_limit\" }",
+        "function": "decideRefund"
+      },
+      "kind": "invariant",
+      "text": "if (order.refundableCents > MAX_REFUND_CENTS) { outcome: \"REFUSE\", reason: \"over_limit\" }",
+      "why": "A threshold over stored or derived state (amounts, dates, counts, ranks). Arithmetic and limits stay deterministic.",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "order.refundableCents <= 50000"
+    },
+    {
+      "id": "m010",
+      "source": {
+        "file": "policy.ts",
+        "line": 22,
+        "endLine": 38,
+        "kind": "switch",
+        "discriminant": "reason",
+        "cases": [
+          "\"DAMAGED\"",
+          "\"NOT_DELIVERED\"",
+          "\"CHANGED_MIND\"",
+          "default"
+        ],
+        "function": "decideRefund"
+      },
+      "kind": "judgment",
+      "text": "switch (reason) { \"DAMAGED\" | \"NOT_DELIVERED\" | \"CHANGED_MIND\" | default }",
+      "why": "Branches on \"reason: Reason\", a category the CALLER chooses. In a model-native service this category can be inferred from the caller's own words, under an intent policy. The rules inside each case stay deterministic.",
+      "confidence": "medium",
+      "review": "required"
+    },
+    {
+      "id": "m011",
+      "source": {
+        "file": "policy.ts",
+        "line": 24,
+        "endLine": 24,
+        "kind": "if",
+        "condition": "order.ageDays > 60",
+        "outcome": "{ outcome: \"REFUSE\", reason: \"too_old\" }",
+        "scope": "reason=DAMAGED",
+        "function": "decideRefund"
+      },
+      "kind": "invariant",
+      "text": "if (order.ageDays > 60) { outcome: \"REFUSE\", reason: \"too_old\" }",
+      "why": "A threshold over stored or derived state (amounts, dates, counts, ranks). Arithmetic and limits stay deterministic.",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "order.ageDays <= 60",
+      "scope": "reason=DAMAGED"
+    },
+    {
+      "id": "m012",
+      "source": {
+        "file": "policy.ts",
+        "line": 25,
+        "endLine": 25,
+        "kind": "if",
+        "condition": "carrier?.damaged == null",
+        "outcome": "{ outcome: \"REVIEW\", reason: \"needs_damage_report\" }",
+        "scope": "reason=DAMAGED",
+        "function": "decideRefund"
+      },
+      "kind": "existence",
+      "text": "if (carrier?.damaged == null) { outcome: \"REVIEW\", reason: \"needs_damage_report\" }",
+      "why": "A missing record or fact. In the contract this becomes an unestablished fact (UNVERIFIABLE_PRECONDITION or REVIEW), not a model decision.",
+      "confidence": "high",
+      "review": "required",
+      "scope": "reason=DAMAGED"
+    },
+    {
+      "id": "m013",
+      "source": {
+        "file": "policy.ts",
+        "line": 26,
+        "endLine": 26,
+        "kind": "if",
+        "condition": "!carrier.damaged",
+        "outcome": "{ outcome: \"REFUSE\", reason: \"carrier_says_intact\" }",
+        "scope": "reason=DAMAGED",
+        "function": "decideRefund"
+      },
+      "kind": "invariant",
+      "text": "if (!carrier.damaged) { outcome: \"REFUSE\", reason: \"carrier_says_intact\" }",
+      "why": "A boolean fact that must be true; deterministic.",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "carrier.damaged == true",
+      "scope": "reason=DAMAGED"
+    },
+    {
+      "id": "m014",
+      "source": {
+        "file": "policy.ts",
+        "line": 29,
+        "endLine": 29,
+        "kind": "if",
+        "condition": "order.ageDays > 45",
+        "outcome": "{ outcome: \"REFUSE\", reason: \"too_old\" }",
+        "scope": "reason=NOT_DELIVERED",
+        "function": "decideRefund"
+      },
+      "kind": "invariant",
+      "text": "if (order.ageDays > 45) { outcome: \"REFUSE\", reason: \"too_old\" }",
+      "why": "A threshold over stored or derived state (amounts, dates, counts, ranks). Arithmetic and limits stay deterministic.",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "order.ageDays <= 45",
+      "scope": "reason=NOT_DELIVERED"
+    },
+    {
+      "id": "m015",
+      "source": {
+        "file": "policy.ts",
+        "line": 30,
+        "endLine": 30,
+        "kind": "if",
+        "condition": "carrier?.delivered == null",
+        "outcome": "{ outcome: \"REVIEW\", reason: \"needs_tracking\" }",
+        "scope": "reason=NOT_DELIVERED",
+        "function": "decideRefund"
+      },
+      "kind": "existence",
+      "text": "if (carrier?.delivered == null) { outcome: \"REVIEW\", reason: \"needs_tracking\" }",
+      "why": "A missing record or fact. In the contract this becomes an unestablished fact (UNVERIFIABLE_PRECONDITION or REVIEW), not a model decision.",
+      "confidence": "high",
+      "review": "required",
+      "scope": "reason=NOT_DELIVERED"
+    },
+    {
+      "id": "m016",
+      "source": {
+        "file": "policy.ts",
+        "line": 31,
+        "endLine": 31,
+        "kind": "if",
+        "condition": "carrier.delivered",
+        "outcome": "{ outcome: \"REFUSE\", reason: \"carrier_says_delivered\" }",
+        "scope": "reason=NOT_DELIVERED",
+        "function": "decideRefund"
+      },
+      "kind": "invariant",
+      "text": "if (carrier.delivered) { outcome: \"REFUSE\", reason: \"carrier_says_delivered\" }",
+      "why": "A boolean fact that must be false; deterministic.",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "carrier.delivered == false",
+      "scope": "reason=NOT_DELIVERED"
+    },
+    {
+      "id": "m017",
+      "source": {
+        "file": "policy.ts",
+        "line": 34,
+        "endLine": 34,
+        "kind": "if",
+        "condition": "order.ageDays > 30",
+        "outcome": "{ outcome: \"REFUSE\", reason: \"too_old\" }",
+        "scope": "reason=CHANGED_MIND",
+        "function": "decideRefund"
+      },
+      "kind": "invariant",
+      "text": "if (order.ageDays > 30) { outcome: \"REFUSE\", reason: \"too_old\" }",
+      "why": "A threshold over stored or derived state (amounts, dates, counts, ranks). Arithmetic and limits stay deterministic.",
+      "confidence": "high",
+      "review": "required",
+      "candidateRule": "order.ageDays <= 30",
+      "scope": "reason=CHANGED_MIND"
+    }
+  ],
+  "summary": {
+    "authorization": 2,
+    "invariant": 8,
+    "existence": 2,
+    "read": 2,
+    "effect": 2,
+    "judgment": 1,
+    "unknown": 0
+  },
+  "unsupported": [],
+  "notes": [],
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "orderId",
+      "reason"
+    ],
+    "properties": {
+      "orderId": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string",
+        "enum": [
+          "DAMAGED",
+          "NOT_DELIVERED",
+          "CHANGED_MIND",
+          "OTHER"
+        ]
+      },
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "principalParam": "user",
+  "requestParam": "{ orderId, reason }",
+  "outcomes": [
+    {
+      "status": "REFUSE",
+      "reason": "not_found",
+      "mapsTo": "REFUSE",
+      "line": 18
+    },
+    {
+      "status": "REFUSE",
+      "reason": "forbidden",
+      "mapsTo": "REFUSE",
+      "line": 19
+    },
+    {
+      "status": "REFUSE",
+      "reason": "nothing_to_refund",
+      "mapsTo": "REFUSE",
+      "line": 20
+    },
+    {
+      "status": "REFUSE",
+      "reason": "over_limit",
+      "mapsTo": "REFUSE",
+      "line": 21
+    },
+    {
+      "status": "REFUSE",
+      "reason": "too_old",
+      "mapsTo": "REFUSE",
+      "line": 24
+    },
+    {
+      "status": "REVIEW",
+      "reason": "needs_damage_report",
+      "mapsTo": "REVIEW",
+      "line": 25
+    },
+    {
+      "status": "REFUSE",
+      "reason": "carrier_says_intact",
+      "mapsTo": "REFUSE",
+      "line": 26
+    },
+    {
+      "status": "ALLOW",
+      "mapsTo": "ALLOW",
+      "line": 27
+    },
+    {
+      "status": "REFUSE",
+      "reason": "too_old",
+      "mapsTo": "REFUSE",
+      "line": 29
+    },
+    {
+      "status": "REVIEW",
+      "reason": "needs_tracking",
+      "mapsTo": "REVIEW",
+      "line": 30
+    },
+    {
+      "status": "REFUSE",
+      "reason": "carrier_says_delivered",
+      "mapsTo": "REFUSE",
+      "line": 31
+    },
+    {
+      "status": "ALLOW",
+      "mapsTo": "ALLOW",
+      "line": 32
+    },
+    {
+      "status": "REFUSE",
+      "reason": "too_old",
+      "mapsTo": "REFUSE",
+      "line": 34
+    },
+    {
+      "status": "ALLOW",
+      "mapsTo": "ALLOW",
+      "line": 35
+    },
+    {
+      "status": "REVIEW",
+      "reason": "other",
+      "mapsTo": "REVIEW",
+      "line": 37
+    }
+  ],
+  "precedence": [
+    {
+      "order": 1,
+      "line": 30,
+      "kind": "invariant"
+    },
+    {
+      "order": 2,
+      "line": 18,
+      "code": "not_found",
+      "kind": "authorization"
+    },
+    {
+      "order": 3,
+      "line": 19,
+      "code": "forbidden",
+      "rule": "order.ownerId == principal.subject",
+      "kind": "authorization"
+    },
+    {
+      "order": 4,
+      "line": 20,
+      "code": "nothing_to_refund",
+      "rule": "order.refundableCents > 0",
+      "kind": "invariant"
+    },
+    {
+      "order": 5,
+      "line": 21,
+      "code": "over_limit",
+      "rule": "order.refundableCents <= 50000",
+      "kind": "invariant"
+    },
+    {
+      "order": 6,
+      "line": 24,
+      "code": "too_old",
+      "rule": "order.ageDays <= 60",
+      "kind": "invariant"
+    },
+    {
+      "order": 7,
+      "line": 25,
+      "code": "needs_damage_report",
+      "kind": "existence"
+    },
+    {
+      "order": 8,
+      "line": 26,
+      "code": "carrier_says_intact",
+      "rule": "carrier.damaged == true",
+      "kind": "invariant"
+    },
+    {
+      "order": 9,
+      "line": 29,
+      "code": "too_old",
+      "rule": "order.ageDays <= 45",
+      "kind": "invariant"
+    },
+    {
+      "order": 10,
+      "line": 30,
+      "code": "needs_tracking",
+      "kind": "existence"
+    },
+    {
+      "order": 11,
+      "line": 31,
+      "code": "carrier_says_delivered",
+      "rule": "carrier.delivered == false",
+      "kind": "invariant"
+    },
+    {
+      "order": 12,
+      "line": 34,
+      "code": "too_old",
+      "rule": "order.ageDays <= 30",
+      "kind": "invariant"
+    }
+  ],
+  "assumptions": {
+    "idempotency": "NONE in the original: a retried request repeats the effect. Modelnativ requires an Idempotency-Key, so callers must send one.",
+    "concurrency": "version-checked writes",
+    "transaction": "the original wraps reads + writes in one transaction"
+  },
+  "manualItems": [
+    "Confirm \"user\" is the authenticated caller (mapped to principal.subject / principal.tenant).",
+    "app.ts:20 read argument `id` is computed; compute it inside the read tool.",
+    "app.ts:20 `SELECT * FROM orders WHERE id=?…`: SELECT * or computed columns. List the facts this read provides.",
+    "app.ts:30 rule could not be translated: if (d.outcome !== \"ALLOW\") d",
+    "policy.ts:18 rule could not be translated: if (!order || order.tenantId !== user.tenantId) { outcome: \"REFUSE\", reason: \"no",
+    "Effects: name the effect arguments and their sources; the adapter scaffold lists the original writes.",
+    "Invariants: bound every caller-supplied amount (the generator never invents limits).",
+    "Authority grants are proposed from which tool reads which table: confirm each table is authoritative for those facts."
+  ]
+}

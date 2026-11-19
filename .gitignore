@@ -1,0 +1,6 @@
+node_modules/
+*.db
+*.db-*
+.modelnativ/
+models/*.gguf
+audit*.jsonl

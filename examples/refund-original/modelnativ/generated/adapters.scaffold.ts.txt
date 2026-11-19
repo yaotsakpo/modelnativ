@@ -1,0 +1,46 @@
+// ADAPTER SCAFFOLD generated from app.ts. Reads become tools (facts minted on their own channel);
+// writes become one effect adapter that runs inside the commit transaction. Complete every TODO.
+import type Database from "better-sqlite3";
+import type { EffectAdapter } from "@modelnativ/effect-executor";
+import type { ReadTool } from "@modelnativ/runtime";
+
+export function tools(db: Database.Database): ReadTool[] {
+  return [
+    {
+      name: "carrier_reports.c", // from app.ts:27
+      async read(args) {
+        const row = db.prepare("SELECT damaged, delivered FROM carrier_reports WHERE order_id=?").get(args.arg0) as Record<string, unknown> | undefined;
+        if (!row) return null;
+        return {
+          "c.damaged": row["damaged"],
+          "c.delivered": row["delivered"],
+        };
+      },
+    },
+    {
+      name: "orders.r", // from app.ts:20
+      async read(args) {
+        const row = db.prepare("SELECT * FROM orders WHERE id=?").get(args.arg0) as Record<string, unknown> | undefined;
+        if (!row) return null;
+        return {
+        };
+      },
+    },
+  ];
+}
+
+export const effect: EffectAdapter = {
+  tool: "refund.request.apply",
+  apply(db, args, binding, { effectId, now }) {
+    // TODO: re-check, inside the transaction, every fact the decision relied on (current state).
+    // app.ts:32
+    // TODO: guard this write (version check or a conditional WHERE) and check changes === 1
+    db.prepare("UPDATE orders SET refundable_cents = refundable_cents - ?, version = version + 1 WHERE id=?").run(/* TODO: d.amountCents, orderId */);
+    // app.ts:33
+    // TODO: guard this write (version check or a conditional WHERE) and check changes === 1
+    db.prepare("INSERT INTO refunds(id, tenant_id, order_id, amount_cents, created_at) VALUES (?,?,?,?,?)").run(/* TODO: id, user.tenantId, orderId, d.amountCents, now() */);
+    return {
+      result: { /* TODO: the fields the original returned on success */ },
+    };
+  },
+};

@@ -1,0 +1,77 @@
+# Migrated from RedemptionService.redeem (examples/loyalty-original/src/service.ts:15-41).
+# Started from generated/loyalty.redeem.contract.draft.yaml; every TODO resolved and every REVIEW decided by hand.
+apiVersion: modelnativ.dev/v1alpha1
+kind: Operation
+metadata:
+  name: loyalty.redeem
+  version: 1
+  summary: Redeem loyalty points for a reward
+spec:
+  input:
+    type: object
+    additionalProperties: false
+    required: [rewardId, quantity]
+    properties:
+      rewardId: { type: string, minLength: 1, maxLength: 64 }
+      quantity: { type: integer, minimum: 1 }          # REVIEW resolved: the controller already required an integer >= 1
+      note: { type: string, maxLength: 500 }
+  principal:
+    required: true
+    scopes: [loyalty:redeem]
+  tenancy:
+    key: acct.tenantId
+    code: not_found                                    # original: no account in this tenant -> "not_found"
+  concurrency:
+    mode: serialized_per_resource
+    key: request.rewardId
+    maxQueue: 1000
+    # no versionFact: the legacy tables have no version column; the adapter guards every write
+  facts:
+    - tool: request
+      provides: [request.rewardId, request.quantity, request.note]
+    - tool: accounts.mine
+      args: { member: principal.subject, tenant: principal.tenant }
+      provides: [acct.memberId, acct.tenantId, acct.points, acct.status, acct.tierRank]
+    - tool: policy.get
+      provides: [policy.dailyLimit]                                                           # service.ts:9 (modelnativ/policy.ts)
+    - tool: rewards.get
+      args: { rewardId: request.rewardId, tenant: principal.tenant, quantity: request.quantity }
+      provides: [reward.id, reward.stock, reward.minTierRank, reward.totalCost]
+    - tool: redemptions.today
+      args: { member: principal.subject }
+      provides: [today.count]
+  authority:
+    - { id: cap.request, channel: principal, predicates: ["request.*"] }
+    - { id: cap.accounts, channel: "tool:accounts.mine", predicates: ["acct.*"] }       # REVIEW: the accounts table is authoritative
+    - { id: cap.policy, channel: "tool:policy.get", predicates: ["policy.*"] }
+    - { id: cap.rewards, channel: "tool:rewards.get", predicates: ["reward.*"] }       # REVIEW: the rewards table is authoritative
+    - { id: cap.redemptions, channel: "tool:redemptions.today", predicates: ["today.*"] }
+  decision:
+    source: { mode: fixed, category: REDEEM }          # no judgment: no model
+    evaluation: sequential                             # original order; first failure decides
+    categories:
+      REDEEM:
+        description: Spend points on a reward
+        requires:
+          - { rule: "acct.status == 'active'", code: inactive }                                   # service.ts:21
+          - { rule: "reward.id == request.rewardId", code: not_found, unestablished: { outcome: refuse, code: not_found } }   # service.ts:25
+          - { rule: "acct.tierRank >= reward.minTierRank", code: tier_required }                 # service.ts:26 (tier ranks derived in the tools)
+          - { rule: "reward.stock >= request.quantity", code: out_of_stock }                     # service.ts:27
+          - { rule: "acct.points >= reward.totalCost", code: insufficient_points }               # service.ts:29 (total = cost x quantity, in the tool)
+          - { rule: "today.count < policy.dailyLimit", code: daily_limit }                                       # service.ts:31 (DAILY_LIMIT = 3)
+  policy:
+    authorization: []                                  # the account is looked up by the caller's own identity
+    invariants: []                                     # no caller-supplied amounts: every effect argument is an established fact
+  effects:
+    loyalty.redeem.apply:
+      mode: effectful
+      idempotency: required
+      args:
+        memberId: { type: string, authority: established, from: [acct.memberId] }
+        rewardId: { type: string, authority: established, from: [reward.id] }
+        quantity: { type: integer, authority: established, from: [request.quantity] }
+        points: { type: integer, authority: established, from: [reward.totalCost] }
+        dailyLimit: { type: integer, authority: established, from: [policy.dailyLimit] }      # the adapter re-checks with the same value
+  failure:
+    onUnverifiable: refuse
+    onModelError: refuse

@@ -1,0 +1,43 @@
+# Approach C: concise declaration; `modelnativ compile --expanded` shows the explicit contract it compiles to.
+apiVersion: modelnativ.dev/v1alpha1
+kind: ConciseOperation
+metadata: { name: loyalty.redeem, version: 1, summary: Redeem loyalty points for a reward }
+spec:
+  input:
+    type: object
+    additionalProperties: false
+    required: [rewardId, quantity]
+    properties:
+      rewardId: { type: string, minLength: 1, maxLength: 64 }
+      quantity: { type: integer, minimum: 1 }
+      note: { type: string, maxLength: 500 }
+  principal: { scopes: [loyalty:redeem] }
+  tenancy: { key: acct.tenantId, code: not_found }
+  concurrency: { key: request.rewardId }
+  reads:
+    accounts.mine: { args: { member: principal.subject, tenant: principal.tenant }, provides: [acct.memberId, acct.tenantId, acct.points, acct.status, acct.tierRank], establishes: [acct.*] }
+    policy.get: { provides: [policy.dailyLimit], establishes: [policy.*] }
+    rewards.get: { args: { rewardId: request.rewardId, tenant: principal.tenant, quantity: request.quantity }, provides: [reward.id, reward.stock, reward.minTierRank, reward.totalCost], establishes: [reward.*] }
+    redemptions.today: { args: { member: principal.subject }, provides: [today.count], establishes: [today.*] }
+  decision:
+    source: { mode: fixed, category: REDEEM }
+    evaluation: sequential
+    categories:
+      REDEEM:
+        description: Spend points on a reward
+        requires:
+          - "acct.status == 'active'": inactive
+          - "reward.id == request.rewardId": { code: not_found, unestablished: { outcome: refuse, code: not_found } }
+          - "acct.tierRank >= reward.minTierRank": tier_required
+          - "reward.stock >= request.quantity": out_of_stock
+          - "acct.points >= reward.totalCost": insufficient_points
+          - "today.count < policy.dailyLimit": daily_limit
+  policy: {}
+  effects:
+    loyalty.redeem.apply:
+      args:
+        memberId: acct.memberId
+        rewardId: reward.id
+        quantity: { from: request.quantity, type: integer }
+        points: { from: reward.totalCost, type: integer }
+        dailyLimit: { from: policy.dailyLimit, type: integer }

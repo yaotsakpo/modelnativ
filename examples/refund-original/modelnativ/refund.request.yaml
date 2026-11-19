@@ -1,0 +1,73 @@
+# Migrated from createLegacyRefundService.requestRefund + decideRefund (examples/refund-original/src).
+# Started from generated/refund.request.contract.draft.yaml; TODOs resolved and REVIEWs decided by hand.
+apiVersion: modelnativ.dev/v1alpha1
+kind: Operation
+metadata:
+  name: refund.request
+  version: 1
+  summary: Request a refund, by structured reason (as the original API) or in free text
+spec:
+  input:
+    type: object
+    additionalProperties: false
+    required: [orderId]
+    anyOf: [{ required: [reason] }, { required: [message] }]
+    properties:
+      orderId: { type: string, minLength: 1, maxLength: 64 }
+      reason: { type: string, enum: [DAMAGED, NOT_DELIVERED, CHANGED_MIND, OTHER] }   # the original API's field
+      message: { type: string, minLength: 1, maxLength: 2000 }                       # new: free text, interpreted by the model
+  principal: { required: true, scopes: [refund:request] }
+  tenancy: { key: order.tenantId, code: not_found }                                   # policy.ts:18 (another tenant's order = not found)
+  concurrency: { mode: serialized_per_resource, key: request.orderId, versionFact: order.version, maxQueue: 1000 }
+  facts:
+    - tool: request
+      provides: [request.orderId, request.reason, request.message]
+    - tool: orders.get
+      args: { id: request.orderId, tenant: principal.tenant }
+      provides: [order.id, order.tenantId, order.ownerId, order.ageDays, order.refundableCents, order.version]
+    - tool: carrier.get
+      args: { orderId: request.orderId, tenant: principal.tenant }
+      provides: [carrier.damaged, carrier.delivered]
+  authority:
+    - { id: cap.request, channel: principal, predicates: ["request.*"] }
+    - { id: cap.orders, channel: "tool:orders.get", predicates: ["order.*"] }        # REVIEW decided: orders table is authoritative
+    - { id: cap.carrier, channel: "tool:carrier.get", predicates: ["carrier.*"] }    # REVIEW decided: carrier_reports is authoritative
+  model:
+    role: classify the customer's refund reason
+    sees: [request.message]
+    budget: { timeoutMs: 8000, maxOutputTokens: 64, maxRetries: 1 }
+  decision:
+    source: { mode: hybrid, field: request.reason }                                   # structured reason when given; else the model
+    evaluation: sequential                                                             # original order within each reason
+    categories:
+      DAMAGED:
+        description: The item arrived broken or damaged.
+        requires:
+          - { rule: "order.ageDays <= 60", code: too_old }                                                                      # policy.ts:24
+          - { rule: "carrier.damaged == true", code: carrier_says_intact, unestablished: { outcome: review, code: needs_damage_report } }  # policy.ts:25-26
+      NOT_DELIVERED:
+        description: The item never arrived.
+        requires:
+          - { rule: "order.ageDays <= 45", code: too_old }                                                                      # policy.ts:29
+          - { rule: "carrier.delivered == false", code: carrier_says_delivered, unestablished: { outcome: review, code: needs_tracking } }  # policy.ts:30-31
+      CHANGED_MIND:
+        description: The customer no longer wants the item; nothing is wrong with it.
+        requires:
+          - { rule: "order.ageDays <= 30", code: too_old }                                                                      # policy.ts:34
+      OTHER: { description: Anything else, alwaysReview: true, code: other }                                                     # policy.ts:37
+  policy:
+    authorization:
+      - { rule: "order.ownerId == principal.subject", code: forbidden }                                                         # policy.ts:19
+    # Checked BEFORE the reason, exactly like the original (preserves the $900 over_limit precedence).
+    preconditions:
+      - { rule: "order.refundableCents > 0", code: nothing_to_refund }                                                         # policy.ts:20
+      - { rule: "order.refundableCents <= 50000", code: over_limit }                                                           # policy.ts:21
+    invariants: []                                     # the amount is the established balance; no caller-supplied amount
+  effects:
+    refund.request.apply:
+      mode: effectful
+      idempotency: required
+      args:
+        orderId: { type: string, authority: established, from: [order.id] }
+        amountCents: { type: integer, authority: established, from: [order.refundableCents] }
+  failure: { onUnverifiable: refuse, onModelError: refuse }

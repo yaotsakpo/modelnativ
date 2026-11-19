@@ -1,0 +1,125 @@
+apiVersion: modelnativ.dev/v1alpha1
+kind: Operation
+metadata:
+  name: refund.create
+  version: 1
+  summary: Refund an order, classified from the customer's own words, with an intent policy (two-polarity confirmation)
+  description: >
+    A customer asks for a refund in their own words. The model classifies the
+    request into a reason category; each category names the established facts
+    it needs. The model never establishes a fact and never grants authority.
+
+spec:
+  input:
+    type: object
+    additionalProperties: false
+    required: [orderId, message]
+    properties:
+      orderId: { type: string, pattern: "^ord_[a-z0-9]{1,32}$" }
+      message: { type: string, minLength: 1, maxLength: 2000 }
+      # What the customer's app says the customer reported. Minted on the
+      # principal's channel, which holds no grant over shipment.*: a claim, not a fact.
+      claims:
+        type: object
+        additionalProperties: false
+        properties:
+          damaged: { type: boolean }
+          delivered: { type: boolean }
+
+  principal:
+    required: true
+    scopes: [refund:request]
+
+  tenancy:
+    key: order.tenantId
+
+  concurrency:
+    mode: serialized_per_resource
+    key: request.orderId
+    versionFact: order.version
+    maxQueue: 2000
+
+  facts:
+    - tool: request
+      provides: [request.orderId, request.message]
+      # The customer's claims about the shipment, minted on the principal's
+      # channel at the SAME predicates the carrier owns. The principal holds no
+      # grant there, so PSAP mints them PROPOSING: they can never outrank the
+      # carrier, and alone they never satisfy a requirement.
+      claims: [shipment.damaged, shipment.delivered]
+    - tool: orders.get
+      args: { orderId: request.orderId }
+      provides: [order.id, order.tenantId, order.ownerId, order.ageDays, order.refundableCents, order.version]
+    - tool: carrier.status
+      args: { orderId: request.orderId }
+      provides: [shipment.damaged, shipment.delivered, shipment.note]
+
+  authority:
+    - id: cap.principal.request
+      channel: principal
+      predicates: [request.*]
+    - id: cap.orders
+      channel: tool:orders.get
+      predicates: [order.*]
+    - id: cap.carrier
+      channel: tool:carrier.status
+      predicates: [shipment.*]
+    # shipment.note is carrier free text. It is established only as "what the
+    # carrier wrote"; no rule reads it, so text inside it cannot authorize anything.
+
+  model:
+    role: classify_refund_reason
+    # Intent-only view (decision 3): the model sees the customer's words, not eligibility facts.
+    sees: [request.message]
+    budget: { timeoutMs: 8000, maxOutputTokens: 256, maxRetries: 1 }
+
+  decision:
+    # Intent policy: the model must report how clearly the customer states the reason and quote it.
+    abstain: OTHER
+    evidence: { from: request.message }
+    categories:
+      DAMAGED:
+        description: The item arrived broken or damaged.
+        intent: { minimum: implied }
+        requires: ["shipment.damaged == true", "order.ageDays <= 60"]
+        onUnestablished: review
+      NOT_DELIVERED:
+        description: The item never arrived.
+        intent: { minimum: implied }
+        requires: ["shipment.delivered == false", "order.ageDays <= 45"]
+        onUnestablished: review
+      CHANGED_MIND:
+        description: The customer no longer wants the item; nothing is wrong with it.
+        # Nothing external corroborates this category (its only requirement is the order's age),
+        # so it needs explicit intent AND an independent confirmation.
+        intent:
+          minimum: explicit
+          # Asked in both polarities: a yes-biased model fails the second question.
+          confirm:
+            - { ask: "Does the customer say they simply no longer want the item (for example wrong size, found it cheaper, did not like it)?", expect: "yes" }
+            - { ask: "Does the message say the item is damaged, broken, defective, missing, late, or that the customer wants an exchange, a replacement, or something other than a refund?", expect: "no" }
+        requires: ["order.ageDays <= 30"]
+        onUnestablished: refuse
+      OTHER:
+        description: Anything else, or unclear.
+        alwaysReview: true
+
+  policy:
+    authorization:
+      - "order.ownerId == principal.subject"
+    invariants:
+      - "proposal.amountCents > 0"
+      - "proposal.amountCents <= order.refundableCents"
+      - "proposal.amountCents <= 50000"
+
+  effects:
+    payments.refund:
+      mode: effectful
+      idempotency: required
+      args:
+        orderId: { type: string, authority: established, from: [order.id] }
+        amountCents: { type: integer, authority: bounded, default: order.refundableCents }
+
+  failure:
+    onUnverifiable: refuse
+    onModelError: refuse

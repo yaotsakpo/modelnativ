@@ -1,0 +1,67 @@
+# Approach C: concise declaration; `modelnativ compile --expanded` shows the explicit contract.
+apiVersion: modelnativ.dev/v1alpha1
+kind: ConciseOperation
+metadata: { name: plan.change, version: 1, summary: "Change a subscription's plan (upgrade, downgrade, or request approval)" }
+spec:
+  input:
+    type: object
+    additionalProperties: false
+    required: [subscriptionId, targetPlanId]
+    properties:
+      subscriptionId: { type: string, minLength: 1 }
+      targetPlanId: { type: string, minLength: 1 }
+      expectedVersion: { type: integer, minimum: 1 }
+  principal: { scopes: ["subscription:change-plan"] }
+  tenancy: { key: sub.tenantId, code: not_found }
+  concurrency: { key: request.subscriptionId, versionFact: sub.version }
+  reads:
+    subscriptions.get: { args: { id: request.subscriptionId, tenant: principal.tenant }, provides: [sub.id, sub.accountId, sub.tenantId, sub.planId, sub.status, sub.seatsInUse, sub.version, sub.promoLockActive, sub.periodStart], establishes: [sub.*] }
+    members.get: { args: { account: sub.accountId, user: principal.subject }, provides: [member.userId, member.canChangePlan], establishes: [member.*] }
+    plans.target: { args: { id: request.targetPlanId }, provides: [target.id, target.purchasable, target.seatLimit], establishes: [target.*] }
+    policy.get: { provides: [policy.approvalThresholdCents, policy.maxPlanChangesPerPeriod], establishes: [policy.*] }
+    invoices.pending: { args: { sub: sub.id }, provides: [billing.pendingInvoices], establishes: [billing.*] }
+    history.period: { args: { sub: sub.id, since: sub.periodStart }, provides: [history.changesThisPeriod], establishes: [history.*] }
+    change.compute: { args: { sub: sub.id, to: request.targetPlanId, threshold: policy.approvalThresholdCents }, provides: [change.direction, change.prorationCents, change.kind], establishes: [change.*] }
+  decision:
+    source: { mode: fact, field: change.kind, values: { upgrade: UPGRADE, upgrade_approval: NEEDS_APPROVAL, downgrade: DOWNGRADE } }
+    evaluation: sequential
+    categories:
+      UPGRADE: { description: Apply an upgrade, effect: plan.change.apply, requires: [{ rule: "change.direction == 'upgrade'" }, { rule: "change.prorationCents <= policy.approvalThresholdCents" }] }
+      NEEDS_APPROVAL: { description: "An upgrade above the approval threshold: record an approval request", effect: plan.change.requestApproval, requires: [{ rule: "change.direction == 'upgrade'" }, { rule: "change.prorationCents > policy.approvalThresholdCents" }] }
+      DOWNGRADE:
+        description: Apply a downgrade
+        effect: plan.change.apply
+        requires:
+          - "sub.promoLockActive == false": promo_lock_active
+          - "sub.seatsInUse <= target.seatLimit": seat_limit_exceeded
+  policy:
+    authorization:
+      - "member.canChangePlan == true": { code: forbidden, unestablished: { outcome: refuse, code: forbidden } }
+    preconditions:
+      - "sub.status != 'past_due'": subscription_past_due
+      - "sub.status != 'cancelled'": subscription_cancelled
+      - "target.id == request.targetPlanId": { unestablished: { outcome: refuse, code: plan_not_found } }
+      - "target.purchasable == true": plan_not_purchasable
+      - "target.id != sub.planId": same_plan
+      - "billing.pendingInvoices == 0": invoice_pending
+      - "history.changesThisPeriod < policy.maxPlanChangesPerPeriod": plan_change_limit_reached
+    invariants:
+      - "proposal.expectedVersion <= sub.version": version_conflict
+  effects:
+    plan.change.apply:
+      args:
+        subscriptionId: sub.id
+        accountId: sub.accountId
+        fromPlanId: sub.planId
+        toPlanId: target.id
+        direction: change.direction
+        prorationCents: { from: change.prorationCents, type: integer }
+        changedBy: member.userId
+        expectedVersion: { type: integer, authority: bounded, default: sub.version, fromRequest: request.expectedVersion }
+    plan.change.requestApproval:
+      args:
+        subscriptionId: sub.id
+        fromPlanId: sub.planId
+        toPlanId: target.id
+        prorationCents: { from: change.prorationCents, type: integer }
+        requestedBy: member.userId

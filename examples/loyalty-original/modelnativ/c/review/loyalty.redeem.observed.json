@@ -1,0 +1,89 @@
+{
+ "kind": "modelnativ.observed-effects",
+ "source": "tests/differential/loyalty.lib.ts cases() (2,574)",
+ "executions": 2574,
+ "reads": {
+  "accounts.mine": [
+   {
+    "sql": "SELECT member_id, tenant_id, points, tier, status FROM loyalty_accounts WHERE member_id = ? AND tenant_id = ?",
+    "op": "SELECT",
+    "tables": [
+     "loyalty_accounts"
+    ],
+    "count": 2574,
+    "rowsChanged": 0
+   }
+  ],
+  "rewards.get": [
+   {
+    "sql": "SELECT id, stock, min_tier, cost FROM rewards WHERE id = ? AND tenant_id = ?",
+    "op": "SELECT",
+    "tables": [
+     "rewards"
+    ],
+    "count": 2574,
+    "rowsChanged": 0
+   }
+  ],
+  "redemptions.today": [
+   {
+    "sql": "SELECT COUNT(*) AS n FROM redemptions WHERE member_id = ? AND created_at > ?",
+    "op": "SELECT",
+    "tables": [
+     "redemptions"
+    ],
+    "count": 2574,
+    "rowsChanged": 0
+   }
+  ]
+ },
+ "effects": {
+  "loyalty.redeem.apply": {
+   "applied": 108,
+   "refused": {},
+   "statements": [
+    {
+     "sql": "SELECT COUNT(*) AS n FROM redemptions WHERE member_id = ? AND created_at > ?",
+     "op": "SELECT",
+     "tables": [
+      "redemptions"
+     ],
+     "count": 108,
+     "rowsChanged": 0
+    },
+    {
+     "sql": "UPDATE loyalty_accounts SET points = points - ? WHERE member_id = ? AND tenant_id = ? AND status = 'active' AND points >= ?",
+     "op": "UPDATE",
+     "tables": [
+      "loyalty_accounts"
+     ],
+     "count": 108,
+     "rowsChanged": 108
+    },
+    {
+     "sql": "UPDATE rewards SET stock = stock - ? WHERE id = ? AND tenant_id = ? AND stock >= ?",
+     "op": "UPDATE",
+     "tables": [
+      "rewards"
+     ],
+     "count": 108,
+     "rowsChanged": 108
+    },
+    {
+     "sql": "INSERT INTO redemptions (id, member_id, reward_id, quantity, points, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+     "op": "INSERT",
+     "tables": [
+      "redemptions"
+     ],
+     "count": 108,
+     "rowsChanged": 108
+    }
+   ],
+   "outbox": {
+    "fulfillment": 108
+   }
+  }
+ },
+ "operation": "loyalty.redeem",
+ "fingerprint": "e78f4395fd51a397d79f8f490c13c0b43c9c4240ee5d991c2848641382dba98f"
+}
